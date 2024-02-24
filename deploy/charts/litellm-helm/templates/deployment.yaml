@@ -93,6 +93,29 @@ spec:
             - name: tmp
               mountPath: /tmp
           {{ end }}
+        {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+        # TODO: init container to create config.yaml if not exists
+        - name: ensure-config-file-exists
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: bash:latest
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+          - bash
+          - -c
+          - |
+            [[ -d /mnt/share/litellm ]] || mkdir -p -m 777 /mnt/share/litellm
+            [[ -s /mnt/share/litellm/config.yaml ]] && exit 0
+            echo "now creating config file using defined configmap..."
+            echo ""
+            cat /opt/ref/litellm/config.yaml > /mnt/share/litellm/config.yaml
+            echo "config file created successfully."
+          volumeMounts:
+          - name: litellm-config-volume
+            mountPath: /mnt/share/
+          - name: litellm-config-configmap
+            mountPath: /opt/ref/litellm/
+        {{- end }}
       containers:
         - name: {{ include "litellm.name" . }}
           securityContext:
@@ -104,6 +127,30 @@ spec:
               value: "0.0.0.0"
             - name: PORT
               value: {{ .Values.service.port | quote}}
+            {{- if .Values.cache.endpoint }}
+            - name: REDIS_HOST
+              value: {{ .Values.cache.endpoint | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.cache.port | quote }}
+            {{- if and .Values.cache.secret.name .Values.cache.secret.passwordKey }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: {{ .Values.cache.secret.passwordKey }}
+                  name: {{ .Values.cache.secret.name }}
+            {{- end }}
+            {{- if or .Values.cache.username (and .Values.cache.secret.name .Values.cache.secret.usernameKey) }}
+            - name: REDIS_USER
+              {{- if .Values.cache.username }}
+              value: {{ .Values.cache.username }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  key: {{ .Values.cache.secret.usernameKey }}
+                  name: {{ .Values.cache.secret.name }}
+              {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.db.deployStandalone }}
             - name: DATABASE_USERNAME
               valueFrom:
@@ -137,11 +184,19 @@ spec:
             {{- end }}
             - name: DATABASE_URL
               value: "postgresql://$(DATABASE_USERNAME):$(DATABASE_PASSWORD)@$(DATABASE_HOST)/$(DATABASE_NAME)"
+            {{- if and (not .Values.masterkey.value) (and .Values.masterkey.existingSecret.key .Values.masterkey.existingSecret.name) }}
+            - name: PROXY_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.masterkey.existingSecret.name }}
+                  key: {{ .Values.masterkey.existingSecret.key }}
+            {{- else }}
             - name: PROXY_MASTER_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "litellm.fullname" . }}-masterkey
                   key: masterkey
+            {{- end }}
             {{- if .Values.redis.enabled }}
             - name: REDIS_HOST
               value: {{ include "litellm.redis.serviceName" . }}
@@ -160,19 +215,28 @@ spec:
           {{- end }}
           args:
             - --config
+            {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+            - /mnt/share/litellm/config.yaml
+            {{- else }}
             - /etc/litellm/config.yaml
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+          {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /health/liveliness
               port: http
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /health/readiness
               port: http
+          {{- end }}
+          {{- if .Values.startupProbe.enabled }}
           # Give the container time to start up.  Up to 5 minutes (10 * 30 seconds)
           startupProbe:
             httpGet:
@@ -180,11 +244,17 @@ spec:
               port: http
             failureThreshold: 30
             periodSeconds: 10
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
-            - name: litellm-config
+            {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+            - name: litellm-config-volume
+              mountPath: /mnt/share/
+            {{- else }}
+            - name: litellm-config-configmap
               mountPath: /etc/litellm/
+            {{- end }}
           {{ if .Values.securityContext.readOnlyRootFilesystem }}
             - name: tmp
               mountPath: /tmp
@@ -208,12 +278,24 @@ spec:
           emptyDir:
             sizeLimit: 500Mi
         {{- end }}
-        - name: litellm-config
+        {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+        - name: litellm-config-volume
+          persistentVolumeClaim:
+            claimName: {{ .Values.proxy_config_persistence.sharedVolumeExistingClaim | quote }}
+        - name: litellm-config-configmap
           configMap:
             name: {{ include "litellm.fullname" . }}-config
             items:
               - key: "config.yaml"
                 path: "config.yaml"
+        {{- else }}
+        - name: litellm-config-configmap
+          configMap:
+            name: {{ include "litellm.fullname" . }}-config
+            items:
+              - key: "config.yaml"
+                path: "config.yaml"
+        {{- end }}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

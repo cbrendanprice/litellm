@@ -52,6 +52,15 @@ securityContext: {}
 environmentSecrets: []
   # - litellm-envsecrets
 
+livenessProbe:
+  enabled: true
+
+readinessProbe:
+  enabled: true
+
+startupProbe:
+  enabled: true
+
 service:
   type: ClusterIP
   port: 4000
@@ -72,7 +81,12 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-# masterkey: changeit
+masterkey:
+  value: ""
+  # existing secret is ignored if `value` is provided
+  existingSecret:
+    key: "masterkey"
+    name: ""
 
 # The elements within proxy_config are rendered as config.yaml for the proxy
 #  Examples: https://github.com/BerriAI/litellm/tree/main/litellm/proxy/example_config_yaml
@@ -91,6 +105,34 @@ proxy_config:
         api_base: https://exampleopenaiendpoint-production.up.railway.app/
   general_settings:
     master_key: os.environ/PROXY_MASTER_KEY
+
+# defines persistence configuration for the proxy config:
+# if disabled (default):
+#   mounts the proxy config via a k8s configmap.
+#
+#   note : this method results in an *immutable* config that is managed solely by helm.
+#          thus, subsequent changes made to the above `proxy_config` can be updated by
+#          helm.
+#
+# if enabled:
+#   mounts the proxy config via the provided k8s volume claim.
+#
+#   note : this method results in a *mutable* config that can be managed/modified by the
+#          litellm proxy api (ref: https://litellm-api.up.railway.app/#/config.yaml).
+#
+#   note : with this method helm will *only* create the config file using the provided
+#          `proxy_config` if / when the config.yaml file does *not* exist. this means
+#          that subsequent updates made be helm will *not* update the config.
+#
+#   note : because persistence on disk allows the config file to be mutable, and because
+#          the config file is shared across all running proxy replicas, a shared volume
+#          is required. however running a shared volume in k8s is quite complex so this
+#          chart requires that the volume and claim both be setup prior in order to
+#          offload this complexity from the chart's implementation.
+#
+proxy_config_persistence:
+  enabled: false
+  sharedVolumeExistingClaim: ""
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
@@ -129,6 +171,17 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+cache:
+  endpoint: ""
+  port: 6379
+  username: ""
+
+  secret:
+    name: ""
+    passwordKey: ""
+    # ignored if `username` is provided
+    usernameKey: ""
 
 db:
   # Use an existing postgres server/cluster
