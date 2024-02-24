@@ -3,6 +3,21 @@ entries:
   litellm:
   - apiVersion: v2
     appVersion: v1.24.5
+    created: "2024-02-24T23:23:41.607810699Z"
+    dependencies:
+    - condition: db.deployStandalone
+      name: postgresql
+      repository: oci://registry-1.docker.io/bitnamicharts
+      version: '>=13.3.0'
+    description: Call all LLM APIs using the OpenAI format
+    digest: 88213941130b8324876e8a97477cf406dabfbfcc636b04234b54b9706e185bb5
+    name: litellm
+    type: application
+    urls:
+    - https://github.com/cbrendanprice/litellm/releases/download/litellm-0.2.1/litellm-0.2.1.tgz
+    version: 0.2.1
+  - apiVersion: v2
+    appVersion: v1.24.5
     created: "2024-02-24T22:47:28.484330593Z"
     dependencies:
     - condition: db.deployStandalone
@@ -16,4 +31,4 @@ entries:
     urls:
     - https://github.com/cbrendanprice/litellm/releases/download/litellm-0.2.0/litellm-0.2.0.tgz
     version: 0.2.0
-generated: "2024-02-24T22:47:28.484338728Z"
+generated: "2024-02-24T23:23:41.6078223Z"
