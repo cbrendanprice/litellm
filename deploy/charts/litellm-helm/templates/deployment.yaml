@@ -45,9 +45,34 @@ spec:
       serviceAccountName: {{ include "litellm.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- with .Values.extraInitContainers }}
+      {{- if or .Values.extraInitContainers (and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim) }}
       initContainers:
+        {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+        # TODO: init container to create config.yaml if not exists?
+        - name: ensure-config-file-exists
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: bash:latest
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+          - bash
+          - -c
+          - |
+            [[ -d /mnt/share/litellm ]] || mkdir -p -m 777 /mnt/share/litellm
+            [[ -s /mnt/share/litellm/config.yaml ]] && exit 0
+            echo "now creating config file using defined configmap..."
+            echo ""
+            cat /opt/ref/litellm/config.yaml > /mnt/share/litellm/config.yaml
+            echo "config file created successfully."
+          volumeMounts:
+          - name: litellm-config-volume
+            mountPath: /mnt/share/
+          - name: litellm-config
+            mountPath: /opt/ref/litellm/
+        {{- end }}
+        {{- with .Values.extraInitContainers }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       containers:
         - name: {{ include "litellm.name" . }}
@@ -100,26 +125,52 @@ spec:
             - name: DATABASE_URL
               value: {{ .Values.db.url | quote }}
             {{- end }}
+            {{- if and (not .Values.masterkey) (and .Values.masterkeyExistingSecret.key .Values.masterkeyExistingSecret.name) }}
+            - name: PROXY_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.masterkeyExistingSecret.name }}
+                  key: {{ .Values.masterkeyExistingSecret.key }}
+            {{- else }}
             - name: PROXY_MASTER_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.masterkeySecretName | default (printf "%s-masterkey" (include "litellm.fullname" .)) }}
                   key: {{ .Values.masterkeySecretKey | default "masterkey" }}
+            {{- end }}
             {{- if .Values.redis.enabled }}
+            {{- if .Values.redis.endpoint }}
+            - name: REDIS_HOST
+              value: {{ .Values.redis.endpoint | quote }}
+            {{- else }}
             - name: REDIS_HOST
               value: {{ include "litellm.redis.serviceName" . }}
+            {{- end }}
             - name: REDIS_PORT
               value: {{ include "litellm.redis.port" . | quote }}
+            {{- if and .Values.redis.secret.name .Values.redis.secret.passwordKey }}
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "redis.secretName" .Subcharts.redis }}
-                  key: {{include "redis.secretPasswordKey" .Subcharts.redis }}
+                  key: {{ .Values.redis.secret.passwordKey }}
+                  name: {{ .Values.redis.secret.name }}
+            {{- end }}
+            {{- if or .Values.redis.username (and .Values.redis.secret.name .Values.redis.secret.usernameKey) }}
+            - name: REDIS_USER
+              {{- if .Values.redis.username }}
+              value: {{ .Values.redis.username }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  key: {{ .Values.redis.secret.usernameKey }}
+                  name: {{ .Values.redis.secret.name }}
+              {{- end }}
             {{- end }}
             {{- if .Values.envVars }}
             {{- range $key, $val := .Values.envVars }}
             - name: {{ $key }}
               value: {{ $val | quote }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- if .Values.separateHealthApp }}
@@ -148,7 +199,11 @@ spec:
           {{- else }}
           args:
             - --config
+            {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+            - /mnt/share/litellm/config.yaml
+            {{- else }}
             - /etc/litellm/config.yaml
+            {{- end }}
             {{ if .Values.numWorkers }}
             - --num_workers
             - {{ .Values.numWorkers | quote }}
@@ -193,9 +248,14 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
+            {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+            - name: litellm-config-volume
+              mountPath: /mnt/share/
+            {{- else }}
             - name: litellm-config
               mountPath: /etc/litellm/config.yaml
               subPath: config.yaml
+            {{- end }}
           {{ if .Values.securityContext.readOnlyRootFilesystem }}
             - name: tmp
               mountPath: /tmp
@@ -225,6 +285,11 @@ spec:
         - name: npm
           emptyDir:
             sizeLimit: 500Mi
+        {{- end }}
+        {{- if and .Values.proxy_config_persistence.enabled .Values.proxy_config_persistence.sharedVolumeExistingClaim }}
+        - name: litellm-config-volume
+          persistentVolumeClaim:
+            claimName: {{ .Values.proxy_config_persistence.sharedVolumeExistingClaim | quote }}
         {{- end }}
         - name: litellm-config
           configMap:
