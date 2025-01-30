@@ -67,6 +67,25 @@ entries:
     - https://github.com/cbrendanprice/litellm/releases/download/litellm-helm-0.3.0/litellm-helm-0.3.0.tgz
     version: 0.3.0
   - apiVersion: v2
+    appVersion: v1.50.2
+    created: "2025-01-30T19:38:53.094534479Z"
+    dependencies:
+    - condition: db.deployStandalone
+      name: postgresql
+      repository: oci://registry-1.docker.io/bitnamicharts
+      version: '>=13.3.0'
+    - condition: redis.enabled
+      name: redis
+      repository: oci://registry-1.docker.io/bitnamicharts
+      version: '>=18.0.0'
+    description: Call all LLM APIs using the OpenAI format
+    digest: e9e4904e9d0ea1574a0dff9803d973d435f295dc7c0cee9cb0b7808b1d3be532
+    name: litellm-helm
+    type: application
+    urls:
+    - https://github.com/cbrendanprice/litellm/releases/download/litellm-helm-0.3.0-1/litellm-helm-0.3.0-1.tgz
+    version: 0.3.0-1
+  - apiVersion: v2
     appVersion: v1.35.38
     created: "2024-05-10T19:36:48.439089796Z"
     dependencies:
@@ -104,4 +123,4 @@ entries:
     urls:
     - https://github.com/cbrendanprice/litellm/releases/download/litellm-helm-0.2.1-1/litellm-helm-0.2.1-1.tgz
     version: 0.2.1-1
-generated: "2025-01-30T19:20:18.800562858Z"
+generated: "2025-01-30T19:38:53.09456152Z"
