@@ -34,4 +34,4 @@ dependencies:
   - name: redis
     version: ">=18.0.0"
     repository: oci://registry-1.docker.io/bitnamicharts 
-    condition: redis.enabled
+    condition: redis.install
