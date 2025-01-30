@@ -73,7 +73,10 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-# masterkey: changeit
+#masterkey: changeit
+#masterkeyExistingSecret:
+#  key: ""
+#  value: ""
 
 # The elements within proxy_config are rendered as config.yaml for the proxy
 #  Examples: https://github.com/BerriAI/litellm/tree/main/litellm/proxy/example_config_yaml
@@ -179,6 +182,13 @@ postgresql:
 redis:
   enabled: false
   architecture: standalone
+  username: ""
+
+  secret:
+    name: ""
+    passwordKey: ""
+    # ignored if `username` is provided
+    usernameKey: ""
 
 # Prisma migration job settings
 migrationJob:
