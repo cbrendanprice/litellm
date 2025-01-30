@@ -79,6 +79,10 @@ Get redis service port
 {{- if .Values.redis.sentinel.enabled -}}
 {{ .Values.redis.sentinel.service.ports.sentinel }}
 {{- else -}}
+{{- if .Values.redis.port }}
+{{ .Values.redis.port }}
+{{- else }}
 {{ .Values.redis.master.service.ports.redis }}
+{{- end -}}
 {{- end -}}
 {{- end -}}
